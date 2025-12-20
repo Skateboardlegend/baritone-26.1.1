@@ -164,7 +164,7 @@ public final class CachedWorld implements ICachedWorld, Helper {
 
     @Override
     public final void save() {
-        if (!Baritone.settings().chunkCaching.value) {
+        if (true) {
             System.out.println("Not saving to disk; chunk caching is disabled.");
             allRegions().forEach(region -> {
                 if (region != null) {

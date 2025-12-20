@@ -31,6 +31,7 @@ import baritone.utils.pathing.Favoring;
 import baritone.utils.pathing.MutableMoveResult;
 
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 /**
  * The actual A* pathfinding
@@ -64,7 +65,7 @@ public final class AStarPathFinder extends AbstractNodeCostSearch {
         }
         MutableMoveResult res = new MutableMoveResult();
         BetterWorldBorder worldBorder = new BetterWorldBorder(calcContext.world.getWorldBorder());
-        long startTime = System.currentTimeMillis();
+        long startTime = System.nanoTime();
         boolean slowPath = Baritone.settings().slowPath.value;
         if (slowPath) {
             logDebug("slowPath is on, path timeout will be " + Baritone.settings().slowPathTimeoutMS.value + "ms instead of " + primaryTimeout + "ms");
@@ -82,10 +83,10 @@ public final class AStarPathFinder extends AbstractNodeCostSearch {
         Moves[] allMoves = Moves.values();
         while (!openSet.isEmpty() && numEmptyChunk < pathingMaxChunkBorderFetch && !cancelRequested) {
             if ((numNodes & (timeCheckInterval - 1)) == 0) { // only call this once every 64 nodes (about half a millisecond)
-                long now = System.currentTimeMillis(); // since nanoTime is slow on windows (takes many microseconds)
-                if (now - failureTimeoutTime >= 0 || (!failing && now - primaryTimeoutTime >= 0)) {
-                    break;
-                }
+//                long now = System.nanoTime(); // since nanoTime is slow on windows (takes many microseconds)
+//                if (now - failureTimeoutTime >= 0 || (!failing && now - primaryTimeoutTime >= 0)) {
+//                    break;
+//                }
             }
             if (slowPath) {
                 try {
@@ -96,7 +97,7 @@ public final class AStarPathFinder extends AbstractNodeCostSearch {
             mostRecentConsidered = currentNode;
             numNodes++;
             if (goal.isInGoal(currentNode.x, currentNode.y, currentNode.z)) {
-                logDebug("Took " + (System.currentTimeMillis() - startTime) + "ms, " + numMovementsConsidered + " movements considered");
+                logDebug("Took " + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startTime) + "ms, " + numMovementsConsidered + " movements considered");
                 return Optional.of(new Path(realStart, startNode, currentNode, numNodes, goal, calcContext));
             }
             for (Moves moves : allMoves) {
@@ -192,10 +193,10 @@ public final class AStarPathFinder extends AbstractNodeCostSearch {
         System.out.println(numMovementsConsidered + " movements considered");
         System.out.println("Open set size: " + openSet.size());
         System.out.println("PathNode map size: " + mapSize());
-        System.out.println((int) (numNodes * 1.0 / ((System.currentTimeMillis() - startTime) / 1000F)) + " nodes per second");
+        System.out.println((int) (numNodes * 1.0 / (TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - startTime))) + " nodes per second");
         Optional<IPath> result = bestSoFar(true, numNodes);
         if (result.isPresent()) {
-            logDebug("Took " + (System.currentTimeMillis() - startTime) + "ms, " + numMovementsConsidered + " movements considered");
+            logDirect("Took " + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startTime) + "ms, " + numMovementsConsidered + " movements considered");
         }
         return result;
     }
