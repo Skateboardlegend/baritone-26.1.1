@@ -18,13 +18,13 @@
 package baritone.launch.mixins;
 
 import baritone.utils.accessor.IChunkArray;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.chunk.LevelChunk;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 
 import java.util.concurrent.atomic.AtomicReferenceArray;
-import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.chunk.LevelChunk;
 
 @Mixin(targets = "net.minecraft.client.multiplayer.ClientChunkCache$Storage")
 public abstract class MixinChunkArray implements IChunkArray {
@@ -84,8 +84,8 @@ public abstract class MixinChunkArray implements IChunkArray {
             LevelChunk chunk = copyingFrom.get(k);
             if (chunk != null) {
                 ChunkPos chunkpos = chunk.getPos();
-                if (inRange(chunkpos.x, chunkpos.z)) {
-                    int index = getIndex(chunkpos.x, chunkpos.z);
+                if (inRange(chunkpos.x(), chunkpos.z())) {
+                    int index = getIndex(chunkpos.x(), chunkpos.z());
                     if (chunks.get(index) != null) {
                         throw new IllegalStateException("Doing this would mutate the client's REAL loaded chunks?!");
                     }

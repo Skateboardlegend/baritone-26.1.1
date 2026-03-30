@@ -1037,8 +1037,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         if (!ignoreDirection && ignoredProps.isEmpty()) {
             return first.equals(second); // early return if no properties are being ignored
         }
-        Map<Property<?>, Comparable<?>> map1 = first.getValues();
-        Map<Property<?>, Comparable<?>> map2 = second.getValues();
+        Map<Property<?>, Comparable<?>> map1 = getBlockStatePropertyMap(first);
+        Map<Property<?>, Comparable<?>> map2 = getBlockStatePropertyMap(second);
         for (Property<?> prop : map1.keySet()) {
             if (map1.get(prop) != map2.get(prop)
                     && !(ignoreDirection && ORIENTATION_PROPS.contains(prop))
@@ -1047,6 +1047,15 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             }
         }
         return true;
+    }
+
+    private static Map<Property<?>, Comparable<?>> getBlockStatePropertyMap(BlockState blockState) {
+        Map<Property<?>, Comparable<?>> map = new HashMap<>();
+        for (var prop : blockState.getProperties()) {
+            var value = blockState.getValue(prop);
+            map.put(prop, value);
+        }
+        return map;
     }
 
     private static boolean containsBlockState(Collection<BlockState> states, BlockState state) {

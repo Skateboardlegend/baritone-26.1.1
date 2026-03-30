@@ -22,33 +22,35 @@ import baritone.api.utils.accessor.ILootTable;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import net.minecraft.client.Minecraft;
+import net.minecraft.commands.Commands;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.LayeredRegistryAccess;
 import net.minecraft.core.Registry;
-import net.minecraft.core.RegistryAccess;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.RegistryDataLoader;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.RegistryLayer;
-import net.minecraft.server.ReloadableServerRegistries;
+import net.minecraft.server.*;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.packs.PackType;
 import net.minecraft.server.packs.VanillaPackResources;
 import net.minecraft.server.packs.repository.ServerPacksSource;
 import net.minecraft.server.packs.resources.CloseableResourceManager;
 import net.minecraft.server.packs.resources.MultiPackResourceManager;
+import net.minecraft.server.permissions.LevelBasedPermissionSet;
 import net.minecraft.tags.TagLoader;
-import net.minecraft.world.RandomSequences;
 import net.minecraft.world.flag.FeatureFlagSet;
+import net.minecraft.world.flag.FeatureFlags;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.CustomSpawner;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.WorldDataConfiguration;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.Property;
 import net.minecraft.world.level.dimension.LevelStem;
+import net.minecraft.world.level.levelgen.presets.WorldPresets;
 import net.minecraft.world.level.storage.LevelStorageSource;
 import net.minecraft.world.level.storage.ServerLevelData;
 import net.minecraft.world.level.storage.loot.LootContext;
@@ -60,7 +62,6 @@ import net.minecraft.world.phys.Vec3;
 import sun.misc.Unsafe;
 
 import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.*;
@@ -70,6 +71,7 @@ import java.util.concurrent.ForkJoinPool;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public final class BlockOptionalMeta {
     // id or id[] or id[properties] where id and properties are any text with at least one character
@@ -260,10 +262,10 @@ public final class BlockOptionalMeta {
     public static class ServerLevelStub extends ServerLevel {
         private static Minecraft client = Minecraft.getInstance();
         private static Unsafe unsafe = getUnsafe();
-        private static CompletableFuture<RegistryAccess> registryAccess = load();
+        private static CompletableFuture<ReloadableServerRegistries.Holder> registryLoadHolder = load();
 
-        public ServerLevelStub(MinecraftServer $$0, Executor $$1, LevelStorageSource.LevelStorageAccess $$2, ServerLevelData $$3, ResourceKey<Level> $$4, LevelStem $$5, boolean $$6, long $$7, List<CustomSpawner> $$8, boolean $$9, @Nullable RandomSequences $$10) {
-            super($$0, $$1, $$2, $$3, $$4, $$5, $$6, $$7, $$8, $$9, $$10);
+        public ServerLevelStub(MinecraftServer $$0, Executor $$1, LevelStorageSource.LevelStorageAccess $$2, ServerLevelData $$3, ResourceKey<Level> $$4, LevelStem $$5, boolean $$6, long $$7, List<CustomSpawner> $$8, boolean $$9) {
+            super($$0, $$1, $$2, $$3, $$4, $$5, $$6, $$7, $$8, $$9);
         }
 
         @Override
@@ -280,14 +282,10 @@ public final class BlockOptionalMeta {
             }
         }
 
-        @Override
-        public RegistryAccess registryAccess() {
-            return registryAccess.join();
+        public ReloadableServerRegistries.Holder holder() {
+            return registryLoadHolder.join();
         }
 
-        public ReloadableServerRegistries.Holder holder() {
-            return new ReloadableServerRegistries.Holder(registryAccess().freeze());
-        }
 
         public static Unsafe getUnsafe() {
             try {
@@ -299,7 +297,7 @@ public final class BlockOptionalMeta {
             }
         }
 
-        public static CompletableFuture<RegistryAccess> load() {
+        public static CompletableFuture<ReloadableServerRegistries.Holder> load() {
             // Simplified from {@link net.minecraft.server.WorldLoader#load()}
             CloseableResourceManager closeableResourceManager = new MultiPackResourceManager(
                 PackType.SERVER_DATA,
@@ -313,20 +311,47 @@ public final class BlockOptionalMeta {
                 baseLayeredRegistry.getAccessForLoading(RegistryLayer.WORLDGEN),
                 pendingTags
             );
-            LayeredRegistryAccess<RegistryLayer> layeredRegistryAccess = baseLayeredRegistry.replaceFrom(
-                RegistryLayer.WORLDGEN,
-                RegistryDataLoader.load(
-                    closeableResourceManager,
-                    worldGenRegistryLookupList,
-                    RegistryDataLoader.WORLDGEN_REGISTRIES
-                )
-            );
-            return ReloadableServerRegistries.reload(
-                layeredRegistryAccess,
-                pendingTags,
+
+            return RegistryDataLoader.load(
                 closeableResourceManager,
+                worldGenRegistryLookupList,
+                RegistryDataLoader.WORLDGEN_REGISTRIES,
                 ForkJoinPool.commonPool()
-            ).thenApply(r -> r.layers().compositeAccess());
+            ).thenComposeAsync(loadedWorldgenRegistries -> {
+                List<HolderLookup.RegistryLookup<?>> dimensionContextRegistries = Stream.concat(
+                        worldGenRegistryLookupList.stream(), loadedWorldgenRegistries.listRegistries()
+                    )
+                    .toList();
+                return RegistryDataLoader.load(
+                    closeableResourceManager,
+                    dimensionContextRegistries,
+                    RegistryDataLoader.DIMENSION_REGISTRIES,
+                    ForkJoinPool.commonPool()
+                ).thenComposeAsync(initialWorldgenDimensions -> {
+                    WorldDataConfiguration worldDataConfiguration = WorldDataConfiguration.DEFAULT;
+                    HolderLookup.Provider dimensionContextProvider = HolderLookup.Provider.create(dimensionContextRegistries.stream());
+                    WorldLoader.DataLoadContext context = new WorldLoader.DataLoadContext(closeableResourceManager, worldDataConfiguration, dimensionContextProvider, initialWorldgenDimensions);
+                    Registry<LevelStem> datapackDimensions = context.datapackDimensions().lookupOrThrow(Registries.LEVEL_STEM);
+                    var dimensions = WorldPresets.createNormalWorldDimensions(context.datapackWorldgen());
+                    var finalDimensions = dimensions.bake(datapackDimensions);
+                    finalDimensions.lifecycle().add(context.datapackWorldgen().allRegistriesLifecycle());
+                    LayeredRegistryAccess<RegistryLayer> resourcesLoadContext = baseLayeredRegistry.replaceFrom(
+                        RegistryLayer.WORLDGEN,
+                        loadedWorldgenRegistries,
+                        finalDimensions.dimensionsRegistryAccess()
+                    );
+                    return ReloadableServerResources.loadResources(
+                        closeableResourceManager,
+                        resourcesLoadContext,
+                        pendingTags,
+                        FeatureFlags.VANILLA_SET,
+                        Commands.CommandSelection.DEDICATED,
+                        LevelBasedPermissionSet.OWNER,
+                        ForkJoinPool.commonPool(),
+                        ForkJoinPool.commonPool()
+                    );
+                });
+            }).thenApply(ReloadableServerResources::fullRegistries);
         }
     }
 }

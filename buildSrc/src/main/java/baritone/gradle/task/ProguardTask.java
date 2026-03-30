@@ -25,6 +25,7 @@ import org.gradle.api.tasks.TaskAction;
 import org.gradle.jvm.toolchain.JavaLanguageVersion;
 import org.gradle.jvm.toolchain.JavaLauncher;
 import org.gradle.jvm.toolchain.JavaToolchainService;
+import org.gradle.jvm.toolchain.JvmVendorSpec;
 import xyz.wagyourtail.unimined.api.UniminedExtension;
 import xyz.wagyourtail.unimined.api.minecraft.MinecraftConfig;
 
@@ -94,7 +95,7 @@ public class ProguardTask extends BaritoneGradleTask {
     private void downloadProguard() throws Exception {
         Path proguardZip = getTemporaryFile(String.format(PROGUARD_ZIP, proguardVersion));
         if (!Files.exists(proguardZip)) {
-            write(new URL(String.format("https://github.com/Guardsquare/proguard/releases/download/v%s/proguard-%s.zip", proguardVersion, proguardVersion)).openStream(), proguardZip);
+            write(new URL(String.format("https://github.com/Guardsquare/proguard/releases/download/v7.9/proguard-%s.zip", proguardVersion, proguardVersion)).openStream(), proguardZip);
         }
     }
 
@@ -112,6 +113,7 @@ public class ProguardTask extends BaritoneGradleTask {
         var toolchains = getProject().getExtensions().getByType(JavaToolchainService.class);
         var toolchain = toolchains.launcherFor((spec) -> {
             spec.getLanguageVersion().set(JavaLanguageVersion.of(getProject().findProperty("java_version").toString()));
+            spec.getVendor().set(JvmVendorSpec.AMAZON);
         }).getOrNull();
 
         if (toolchain == null) {

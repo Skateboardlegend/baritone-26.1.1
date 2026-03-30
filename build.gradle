@@ -42,6 +42,7 @@ allprojects {
     java {
         toolchain {
             languageVersion.set(JavaLanguageVersion.of(sourceCompatibility.majorVersion.toInteger()))
+            vendor.set(JvmVendorSpec.AMAZON)
         }
     }
 
@@ -91,12 +92,6 @@ allprojects {
 
     unimined.minecraft(sourceSets.main, true) {
         version rootProject.minecraft_version
-
-        mappings {
-            intermediary()
-            mojmap()
-            parchment(rootProject.minecraft_version, "2025.12.20")
-        }
     }
 
     tasks.withType(JavaCompile).configureEach {
